@@ -7,13 +7,23 @@ import { requireAuth } from '@/utils/auth';
 import { CAPABILITIES, ERROR_CODES } from '@/constants';
 
 // Update a Banner
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(
+  req: NextRequest, 
+  { params }: { params: Promise<{ id: string }> } // ✅ Changed to Promise
+) {
   try {
     requireAuth(req, CAPABILITIES.WRITE_ANNOUNCEMENTS);
     await connectDB();
 
+    // ✅ Await the params before extracting the ID
+    const resolvedParams = await params;
     const body = await req.json();
-    const updated = await Announcement.findByIdAndUpdate(params.id, body, { new: true });
+    
+    const updated = await Announcement.findByIdAndUpdate(
+      resolvedParams.id, 
+      body, 
+      { new: true }
+    );
 
     if (!updated) return sendError('Banner not found', 404, ERROR_CODES.NOT_FOUND);
     return sendSuccess(updated, 'Banner updated successfully');
@@ -23,12 +33,18 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 }
 
 // Delete a Banner
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(
+  req: NextRequest, 
+  { params }: { params: Promise<{ id: string }> } // ✅ Changed to Promise
+) {
   try {
     requireAuth(req, CAPABILITIES.WRITE_ANNOUNCEMENTS);
     await connectDB();
 
-    const deleted = await Announcement.findByIdAndDelete(params.id);
+    // ✅ Await the params before extracting the ID
+    const resolvedParams = await params;
+
+    const deleted = await Announcement.findByIdAndDelete(resolvedParams.id);
     if (!deleted) return sendError('Banner not found', 404, ERROR_CODES.NOT_FOUND);
     
     return sendSuccess(null, 'Banner deleted successfully');
