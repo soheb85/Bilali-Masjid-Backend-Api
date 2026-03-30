@@ -211,11 +211,10 @@ export default function Home() {
 
       if (res.ok && data.success) {
         setAccessToken(data.data.accessToken);
-        setRefreshToken(data.data.refreshToken); // Overwrite old with new
         setModalConfig({
           isOpen: true,
           type: "success",
-          title: "Token Refreshed 🔄",
+          title: "Access Token Refreshed 🔄",
           message: `Your session has been extended successfully. Your new tokens have replaced the old ones.`,
         });
       } else {

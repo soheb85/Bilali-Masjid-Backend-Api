@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
 }
 
 // ----------------------------------------------------------------------
-// PUT: Update the Live Prayer Times (Accepts 12hr, saves as 24hr)
+// PUT: Update the Live Prayer Times (Partial Updates Supported)
 // ----------------------------------------------------------------------
 export async function PUT(req: NextRequest) {
   try {
@@ -77,34 +77,49 @@ export async function PUT(req: NextRequest) {
     await connectDB();
     const body = await req.json();
 
-    // 1. Convert all times to 24-hour format
-    formatAllTimesInObject(body.prayers);
-    formatAllTimesInObject(body.specialTimes);
+    // 1. Fetch the existing record (Singleton Pattern)
+    let liveTimes = await Azan.findOne();
+    if (!liveTimes) {
+      // If for some reason the database is completely empty, create a blank slate
+      liveTimes = new Azan(); 
+    }
 
-    // 2. Clear old Ghost Data & Upsert the single record
-    await Azan.deleteMany({});
+    // 2. Convert to 24-hour format ONLY if those specific fields were sent in the body
+    if (body.prayers) {
+      formatAllTimesInObject(body.prayers);
+    }
+    if (body.specialTimes) {
+      formatAllTimesInObject(body.specialTimes);
+    }
+
+    // 3. ✨ THE FIX: Safely merge the new data into the existing data
+    // .set() is a smart Mongoose function. If you only send "dailyAnnouncement", 
+    // it will ONLY update that field and leave the prayer times untouched!
+    liveTimes.set(body);
     
-    const newTimes = await Azan.create(body);
+    // Save the merged document
+    await liveTimes.save();
 
-    // ✅ 3. FETCH CONFIG AND CALCULATE HIJRI DATE FOR THE RESPONSE!
+    // 4. Fetch Config to calculate the proper Hijri date for the response
     const config = await AppConfig.findOne();
     const hijriOffset = config?.prayerSettings?.hijriDateAdjustment || 0;
     
-    const responseData = newTimes.toObject();
-    responseData.hijriDate = calculateHijriDate(hijriOffset); // Attach the calculated date!
+    const responseData = liveTimes.toObject();
+    responseData.hijriDate = calculateHijriDate(hijriOffset);
 
+    // 5. Audit Logging
     await logAction({
       req,
       userId: userContext.userId,
       userRole: userContext.role,
       action: AUDIT_ACTIONS.UPDATE_AZAN,
       resource: AUDIT_RESOURCES.AZAN,
-      resourceId: newTimes._id.toString(),
-      details: { action: "Live times updated" }, 
+      resourceId: liveTimes._id.toString(),
+      details: { updatedFields: Object.keys(body) }, // Logs exactly which keys were changed
       severity: AUDIT_SEVERITY.INFO,
     });
 
-    return sendSuccess(responseData, 'Live prayer times updated successfully', 201);
+    return sendSuccess(responseData, 'Live prayer times updated successfully', 200);
 
   } catch (error: any) {
     return sendError('Failed to update prayer times', 400, ERROR_CODES.VALIDATION_ERROR, error.message);
