@@ -10,7 +10,7 @@ export interface IAuditLog extends Document {
   details: Record<string, any>; // What exactly changed (Old value vs New value)
   ipAddress?: string;
   userAgent?: string; // Was it a mobile app or a web browser?
-  severity: "INFO" | "WARNING" | "CRITICAL"; // For future use, in case we want to flag certain actions as more important
+  severity: "INFO" | "WARNING" | "CRITICAL" | "ERROR"; // For future use, in case we want to flag certain actions as more important
   createdAt: Date;
 }
 

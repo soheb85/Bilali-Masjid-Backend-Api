@@ -56,6 +56,7 @@ export const AUDIT_SEVERITY = {
   INFO: 'INFO',
   WARNING: 'WARNING',
   CRITICAL: 'CRITICAL',
+  ERROR: 'ERROR',
 } as const;
 
 export const AUDIT_RESOURCES = {

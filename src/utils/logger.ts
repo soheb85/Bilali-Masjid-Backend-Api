@@ -10,7 +10,7 @@ interface LogParams {
   resource: string;
   resourceId?: string;
   details?: any;
-  severity?: "INFO" | "WARNING" | "CRITICAL"; // ✅ Added to interface
+  severity?: "INFO" | "WARNING" | "CRITICAL" | "ERROR"; // ✅ Added to interface
 }
 
 export async function logAction({
