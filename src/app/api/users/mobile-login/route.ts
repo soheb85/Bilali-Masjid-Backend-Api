@@ -3,7 +3,8 @@ import { NextRequest } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { sendSuccess, sendError } from '@/utils/apiResponse';
-import { generateToken } from '@/utils/auth';
+// ✅ FIX 1: Import the new Dual-Token functions
+import { generateAccessToken, generateRefreshToken } from '@/utils/auth'; 
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,10 +35,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Give the mobile app a token so it can make authenticated requests later if needed
-    const token = generateToken(user);
+    // ✅ FIX 2: Generate both tokens for the mobile app
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
 
-    return sendSuccess({ token, user }, 'Mobile login successful');
+    // ✅ FIX 3: Return both tokens in the response so the Flutter app can refresh its session
+    return sendSuccess({ accessToken, refreshToken, user }, 'Mobile login successful');
 
   } catch (error: any) {
     if (error.code === 11000) {
