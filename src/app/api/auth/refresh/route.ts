@@ -4,7 +4,9 @@ import jwt from 'jsonwebtoken';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { sendSuccess, sendError } from '@/utils/apiResponse';
-import { generateAccessToken } from '@/utils/auth';
+import { generateAccessToken, generateRefreshToken } from '@/utils/auth';
+import { AUDIT_ACTIONS, AUDIT_RESOURCES, AUDIT_SEVERITY, ERROR_CODES } from '@/constants';
+import { logAction } from '@/utils/logger';
 
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "8f3c9a7d2b6e1f4a9c0d5e8b7a3f6c1d2e9b4a7f8c5d0e6b1a3f9c7d2e8b6a4";
 
@@ -33,16 +35,43 @@ export async function POST(req: NextRequest) {
       return sendError('User not found or disabled', 401, 'AUTH_FAILED');
     }
 
-    if (!user.refreshTokens.includes(refreshToken)) {
-      // If the token is mathematically valid but NOT in the database, it means 
-      // the Admin manually revoked it (logged the user out from all devices).
-      return sendError('Refresh token has been revoked', 403, 'FORBIDDEN');
+    // Verify this specific refresh token is in the user's allowed list
+    if (!user.refreshTokens || !user.refreshTokens.includes(refreshToken)) {
+      // Token not in list = possible token theft attempt
+      // Clear ALL tokens as security measure (logout all devices)
+      user.refreshTokens = [];
+      await user.save();
+      return sendError(
+        'Session invalidated due to suspicious activity. Please log in again.',
+        401,
+        ERROR_CODES.UNAUTHORIZED,
+      );
     }
 
-    // 3. Generate a fresh 30-minute access token!
-    const newAccessToken = generateAccessToken(user);
+    const newAccessToken  = generateAccessToken(user);
+    const newRefreshToken = generateRefreshToken(user);
 
-    return sendSuccess({ accessToken: newAccessToken }, 'Access Token refreshed successfully');
+    user.refreshTokens = user.refreshTokens.filter((t: string) => t !== refreshToken);
+    user.refreshTokens.push(newRefreshToken);
+
+    // Keep max 5 sessions
+    if (user.refreshTokens.length > 5) user.refreshTokens.shift();
+    await user.save();
+
+    await logAction({
+      req,
+      userId:   user._id.toString(),
+      userRole: user.role,
+      action:   AUDIT_ACTIONS.TOKEN_REFRESHED,
+      resource: AUDIT_RESOURCES.USER,
+      details:  {},
+      severity: AUDIT_SEVERITY.INFO,
+    });
+
+    return sendSuccess(
+      { accessToken: newAccessToken, refreshToken: newRefreshToken },
+      'Session refreshed successfully.',
+    );
 
   } catch (error: any) {
     return sendError('Failed to refresh access token', 500, 'SERVER_ERROR', error.message);

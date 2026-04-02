@@ -1,15 +1,28 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextRequest } from 'next/server';
-import bcrypt from 'bcryptjs';
-import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
-import AppConfig from '@/models/AppConfig'; // ✅ Imported AppConfig
-import { sendSuccess, sendError } from '@/utils/apiResponse';
-import { generateAccessToken, generateRefreshToken } from '@/utils/auth';
-import { ROLES } from '@/constants';
+import { NextRequest } from "next/server";
+import bcrypt from "bcryptjs";
+import connectDB from "@/lib/mongodb";
+import User from "@/models/User";
+import AppConfig from "@/models/AppConfig"; // ✅ Imported AppConfig
+import { sendSuccess, sendError } from "@/utils/apiResponse";
+import { generateAccessToken, generateRefreshToken } from "@/utils/auth";
+import { ROLES } from "@/constants";
+import { checkRateLimit } from '@/utils/rateLimit';
 
 export async function POST(req: NextRequest) {
   try {
+    const forwarded = req.headers.get("x-forwarded-for") ?? "unknown";
+    const ip = forwarded.split(",")[0].trim();
+    const rl = checkRateLimit(`login:${ip}`, 10, 15 * 60 * 1000); // 10 attempts per 15 min
+
+    if (!rl.allowed) {
+      return sendError(
+        "Too many login attempts. Please wait before trying again.",
+        429,
+        "RATE_LIMITED",
+      );
+    }
+
     await connectDB();
 
     const { mobileNumber, password } = await req.json();
@@ -17,36 +30,38 @@ export async function POST(req: NextRequest) {
     // ✅ Validate input
     if (!mobileNumber || !password) {
       return sendError(
-        'Mobile number and password are required',
+        "Mobile number and password are required",
         400,
-        'VALIDATION_ERROR'
+        "VALIDATION_ERROR",
       );
     }
 
     // ✅ 1. FIX: Find user by mobile number AND fetch the hidden fields
-    const user = await User.findOne({ mobileNumber }).select('+passwordHash +refreshTokens');
+    const user = await User.findOne({ mobileNumber }).select(
+      "+passwordHash +refreshTokens",
+    );
 
     if (!user || !user.isActive) {
       return sendError(
-        'Invalid credentials or account disabled',
+        "Invalid credentials or account disabled",
         401,
-        'AUTH_FAILED'
+        "AUTH_FAILED",
       );
     }
 
     // ❗ Extra safety: ensure staff login only
     if (!user.passwordHash) {
       return sendError(
-        'This account does not support password login',
+        "This account does not support password login",
         403,
-        'FORBIDDEN'
+        "FORBIDDEN",
       );
     }
 
     // ✅ Compare password
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
-      return sendError('Invalid credentials', 401, 'AUTH_FAILED');
+      return sendError("Invalid credentials", 401, "AUTH_FAILED");
     }
 
     // ✅ Generate JWTs
@@ -79,7 +94,7 @@ export async function POST(req: NextRequest) {
     let finalUiPermissions: string[] = [];
 
     if (user.role === ROLES.SUPER_ADMIN) {
-      finalUiPermissions = ['*']; // Super Admin sees everything
+      finalUiPermissions = ["*"]; // Super Admin sees everything
     } else {
       // 1. Fetch the global AppConfig
       let config = await AppConfig.findOne();
@@ -87,7 +102,7 @@ export async function POST(req: NextRequest) {
 
       // 2. Get base permissions from their Role (e.g., MOAZIN defaults)
       const baseMap = config.adminPanelUI?.roleScreenMapping;
-      const basePermissions = baseMap ? (baseMap.get(user.role) || []) : [];
+      const basePermissions = baseMap ? baseMap.get(user.role) || [] : [];
 
       // 3. Add any extra permissions given specifically to this user
       let combined = [...basePermissions, ...(user.extraUiPermissions || [])];
@@ -97,7 +112,8 @@ export async function POST(req: NextRequest) {
 
       // 4. Subtract any restricted permissions taken away from this user
       finalUiPermissions = combined.filter(
-        (permission) => !(user.restrictedUiPermissions || []).includes(permission)
+        (permission) =>
+          !(user.restrictedUiPermissions || []).includes(permission),
       );
     }
 
@@ -105,13 +121,15 @@ export async function POST(req: NextRequest) {
     userObj.uiPermissions = finalUiPermissions;
     // ---------------------------------------------------------
 
-    return sendSuccess({ 
-      accessToken, 
-      refreshToken, 
-      user: userObj 
-    }, 'Login successful');
-
+    return sendSuccess(
+      {
+        accessToken,
+        refreshToken,
+        user: userObj,
+      },
+      "Login successful",
+    );
   } catch (error: any) {
-    return sendError('Login failed', 500, 'SERVER_ERROR', error.message);
+    return sendError("Login failed", 500, "SERVER_ERROR", error.message);
   }
 }

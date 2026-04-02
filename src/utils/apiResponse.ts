@@ -47,3 +47,9 @@ export function sendError(
     { status: statusCode }
   );
 }
+
+
+export async function GET()    { return sendError('Route not found', 404, 'NOT_FOUND'); }
+export async function POST()   { return sendError('Route not found', 404, 'NOT_FOUND'); }
+export async function PUT()    { return sendError('Route not found', 404, 'NOT_FOUND'); }
+export async function DELETE() { return sendError('Route not found', 404, 'NOT_FOUND'); }
