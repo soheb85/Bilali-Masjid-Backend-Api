@@ -13,6 +13,7 @@ import {
   CAPABILITIES, ERROR_CODES, AUDIT_ACTIONS, AUDIT_RESOURCES,
   AUDIT_SEVERITY, FCM_TOPICS,
 } from '@/constants';
+import { revalidatePath } from 'next/cache';
 
 // ─────────────────────────────────────────────────────────────
 // GET — Public — Flutter calls this on every app open
@@ -66,7 +67,7 @@ export async function GET() {
     // Cache 5 minutes on CDN — fresh enough, saves DB hits
     response.headers.set(
       'Cache-Control',
-      'public, s-maxage=300, stale-while-revalidate=600',
+      'public, s-maxage=43200, stale-while-revalidate=600',
     );
 
     return response;
@@ -99,6 +100,8 @@ export async function PUT(req: NextRequest) {
 
     liveTimes.set(body);
     await liveTimes.save();
+
+    revalidatePath('/api/azan');
 
     // ── ✅ CRITICAL: Silent FCM push after saving ──────────
     // This wakes up all Flutter apps in background and triggers
