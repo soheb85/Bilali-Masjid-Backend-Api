@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    //Generate the Tokens
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
 
